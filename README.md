@@ -68,3 +68,30 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+### Managing File Permissions in IntelliJ IDEA
+
+To edit file permissions in IntelliJ IDEA:
+
+1. Right-click on the file in the Project Explorer
+2. Select "Properties" (Mac: "Get Info")
+3. In the Properties dialog:
+   - Windows/Linux: Check/uncheck the "Read-only" attribute
+   - Mac: Use the "Sharing & Permissions" section
+
+Alternatively, you can use the terminal:
+```bash
+# Make file executable
+chmod +x filename
+
+# Change permissions
+chmod 644 filename  # Read/write for owner, read for others
+```
+
+Note: On Windows, you might need to run IntelliJ IDEA as administrator to modify certain file permissions.
+
+## Environment Setup
+
+1. Create a `.env` file in the root directory
+2. Add your OpenAI API key:
+```bash
