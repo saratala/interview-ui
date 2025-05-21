@@ -19,6 +19,9 @@ const InterviewSession = () => {
     const [isTranscriptComplete, setIsTranscriptComplete] = useState(false);
     const [stream, setStream] = useState(null);
     const [isStopping, setIsStopping] = useState(false);
+    const [awaitingFinishConfirmation, setAwaitingFinishConfirmation] = useState(false);
+    const [silencePrompted, setSilencePrompted] = useState(false);
+    const silenceResponseRef = useRef('');
 
     useEffect(() => {
         const setupInterview = async () => {
@@ -34,13 +37,13 @@ const InterviewSession = () => {
 
     const initializeCamera = async () => {
         try {
-            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            setStream(videoStream);
+            const avStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            setStream(avStream);
             if (videoRef.current) {
-                videoRef.current.srcObject = videoStream;
+                videoRef.current.srcObject = avStream;
             }
         } catch (err) {
-            console.error('Error accessing camera:', err);
+            console.error('Error accessing camera/microphone:', err);
         }
     };
 
@@ -61,13 +64,13 @@ const InterviewSession = () => {
     const handleAudioData = async (transcribedText) => {
         if (isStopping) return;
 
-        console.log('Received transcription:', transcribedText);
+        console.log('[InterviewSession] handleAudioData called:', transcribedText);
         setIsTranscribing(true);
 
         await new Promise((resolve) => {
             transcriptRef.current += ' ' + transcribedText;
             setAnswerTranscript(transcriptRef.current.trim());
-            console.log('Updated answer transcript:', transcriptRef.current);
+            console.log('[InterviewSession] Updated answer transcript:', transcriptRef.current.trim());
             setIsTranscribing(false);
             setIsTranscriptComplete(true);
             resolve();
@@ -150,6 +153,50 @@ const InterviewSession = () => {
         }
     };
 
+    // Helper: check if user response means they are done
+    const isAffirmative = (text) => {
+        const affirmatives = [
+            'yes', 'i am done', "i'm done", 'finished', 'that is my answer', 'that is all', 'done', 'complete', 'completed', 'that is it', 'that is it for now'
+        ];
+        return affirmatives.some(a => text.toLowerCase().includes(a));
+    };
+
+    // Called when AudioRecorder detects silence
+    const handleSilence = () => {
+        if (!awaitingFinishConfirmation && !silencePrompted) {
+            setSilencePrompted(true);
+            // Ask the candidate if they are done
+            const utterance = new window.SpeechSynthesisUtterance('Did you finish answering?');
+            utterance.onend = () => {
+                setAwaitingFinishConfirmation(true);
+                setIsListening(true); // Listen for their response
+            };
+            window.speechSynthesis.speak(utterance);
+        }
+    };
+
+    // Listen for the user's response to the silence prompt
+    const handleFinishResponse = async (transcribedText) => {
+        if (awaitingFinishConfirmation) {
+            silenceResponseRef.current += ' ' + transcribedText;
+            if (isAffirmative(silenceResponseRef.current)) {
+                setAwaitingFinishConfirmation(false);
+                setSilencePrompted(false);
+                setIsListening(false);
+                setIsFinalizing(true);
+                await handleManualComplete();
+            } else if (silenceResponseRef.current.trim().length > 0) {
+                // If not affirmative, resume normal listening
+                setAwaitingFinishConfirmation(false);
+                setSilencePrompted(false);
+                silenceResponseRef.current = '';
+                setIsListening(true);
+            }
+        } else {
+            await handleAudioData(transcribedText);
+        }
+    };
+
     return (
         <Container maxWidth="lg">
             <Grid container spacing={3} sx={{ py: 4 }}>
@@ -196,22 +243,12 @@ const InterviewSession = () => {
                             </Paper>
                         </Box>
                         <AudioRecorder
-                            onAudioData={handleAudioData}
+                            onAudioData={awaitingFinishConfirmation ? handleFinishResponse : handleAudioData}
                             autoStart={true}
                             isListening={isListening}
+                            onSilence={handleSilence}
+                            mediaStream={stream}
                         />
-                        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                            <Button
-                                variant="contained"
-                                color="success"
-                                onClick={handleManualComplete}
-                                startIcon={<DoneIcon />}
-                                disabled={isAnalyzing || isFinalizing}
-                                sx={{ minWidth: 200 }}
-                            >
-                                I'm Done Answering
-                            </Button>
-                        </Box>
                         {(isAnalyzing || isFinalizing) && (
                             <Typography variant="body2" color="primary" sx={{ mt: 2, textAlign: 'center' }}>
                                 {isFinalizing ? 'Finalizing your answer...' : 'Analyzing your answer...'}
